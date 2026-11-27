@@ -1,0 +1,74 @@
+plugins {
+    id "com.android.application"
+}
+
+// The library sources (android/fetch_deps.sh puts them here), including SDL's
+// own Java classes, which are compiled straight from its release.
+def thirdParty = "${rootDir}/third_party"
+
+android {
+    namespace "app.nswhome"
+    compileSdk 35
+    buildToolsVersion "36.1.0"
+    ndkVersion "28.2.13676358"
+
+    defaultConfig {
+        applicationId "app.nswhome"
+        minSdk 24
+        // 34, not later: from 35 on the system draws every app edge to edge
+        // and SDL 2 has no say in where the display cut-outs fall.
+        targetSdk 34
+        versionCode 1
+        versionName "0.1"
+        ndk {
+            abiFilters "arm64-v8a", "x86_64"
+        }
+        externalNativeBuild {
+            cmake {
+                arguments "-DANDROID_STL=c++_static"
+                // -Pjobs=4 limits the native build to that many compilers at once.
+                if (project.hasProperty("jobs")) {
+                    arguments "-DCMAKE_JOB_POOLS=nswhome=${project.property('jobs')}",
+                              "-DCMAKE_JOB_POOL_COMPILE=nswhome", "-DCMAKE_JOB_POOL_LINK=nswhome"
+                }
+            }
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path "src/main/cpp/CMakeLists.txt"
+            version "3.22.1"
+        }
+    }
+
+    sourceSets {
+        main {
+            java.srcDirs += "${thirdParty}/SDL2-2.32.10/android-project/app/src/main/java"
+        }
+    }
+
+    buildTypes {
+        debug {
+            // The picture is drawn in software: unoptimised native code would
+            // be several times too slow to judge anything by.
+            externalNativeBuild {
+                cmake {
+                    arguments "-DCMAKE_BUILD_TYPE=RelWithDebInfo"
+                }
+            }
+        }
+        release {
+            minifyEnabled false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    lint {
+        abortOnError false
+    }
+}

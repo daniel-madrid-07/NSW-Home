@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="NSWHomeTheme" parent="android:Theme.NoTitleBar.Fullscreen">
+        <item name="android:windowBackground">@android:color/black</item>
+        <!-- With a gamepad the window is not in touch mode, and Android then
+             frames whichever view has the input focus (the drawing surface,
+             the invisible field behind the system keyboard). The menu draws
+             its own cursor. -->
+        <item name="android:defaultFocusHighlightEnabled">false</item>
+    </style>
+</resources>

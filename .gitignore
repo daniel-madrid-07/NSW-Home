@@ -1,0 +1,15 @@
+# Build output and scratch
+build/
+shots/
+# Captures of a real console used as visual reference: never publish
+ref/
+# Per-machine choices (e.g. a personal app icon): never publish
+local/
+# A data folder made by a test run in the project (NSWHOME_DATA)
+data/
+# Editors and tools
+.vscode/
+.vs/
+.claude/
+.claude-flow/
+*.log
