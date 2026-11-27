@@ -26,6 +26,12 @@ Android). No Electron, no web runtime, one executable.
 > Nintendo software, firmware, keys, games, artwork, fonts or sounds, and it does not tell you where
 > to get any of them.
 
+## Install
+
+Download **NSW-Home-Setup.exe** from the [latest release](https://github.com/daniel-madrid-07/NSW-Home/releases/latest),
+run it and follow the steps. It installs for your user only (no administrator rights needed) and
+adds NSW-Home to the Start menu. NSW-Home can update itself from System Settings.
+
 ## What you need
 
 - A PC running Windows 10/11 (Linux, macOS and Android builds also exist, see below).
