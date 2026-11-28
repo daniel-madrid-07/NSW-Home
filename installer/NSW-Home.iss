@@ -4,7 +4,9 @@
 ; program can write to, so its own update check can replace NSW-Home.exe in place.
 
 #define AppName "NSW-Home"
-#define AppVersion "0.1.0"
+#ifndef AppVersion
+  #define AppVersion "0.1.0"
+#endif
 
 [Setup]
 AppId={{6E2B1C4A-7F3D-4B8E-9A51-2D0C8F6B3E17}

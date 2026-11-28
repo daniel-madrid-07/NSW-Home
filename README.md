@@ -32,6 +32,10 @@ Download **NSW-Home-Setup.exe** from the [latest release](https://github.com/dan
 run it and follow the steps. It installs for your user only (no administrator rights needed) and
 adds NSW-Home to the Start menu. NSW-Home can update itself from System Settings.
 
+NSW-Home is not code-signed yet, so the first time Windows may show "Windows protected your PC".
+Click **More info → Run anyway**. Every release is built from this repository's source by
+[GitHub Actions](.github/workflows/release.yml), so you can check what you are running.
+
 ## What you need
 
 - A PC running Windows 10/11 (Linux, macOS and Android builds also exist, see below).

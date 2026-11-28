@@ -1,0 +1,55 @@
+# Builds NSW-Home.exe and the installer from this repository's source.
+# - Every push and pull request: build only (the files are kept as a workflow artifact).
+# - A tag like v0.2.0: build and attach both files to that tag's GitHub release.
+# Building here, not on a personal PC, is what lets a code-signing service vouch
+# that the signed file is exactly what this source produces.
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build NSW-Home.exe
+        shell: cmd
+        run: call build.bat
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
+
+      - name: Build the installer
+        shell: pwsh
+        run: |
+          $ver = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME.TrimStart('v') } else { '0.0.0' }
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=$ver" installer\NSW-Home.iss
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NSW-Home-windows
+          path: |
+            build/NSW-Home.exe
+            build/NSW-Home-Setup.exe
+
+      - name: Attach to the release
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view $env:GITHUB_REF_NAME 2>$null
+          if ($LASTEXITCODE) { gh release create $env:GITHUB_REF_NAME --title "NSW-Home $($env:GITHUB_REF_NAME.TrimStart('v'))" --generate-notes }
+          gh release upload $env:GITHUB_REF_NAME build/NSW-Home.exe build/NSW-Home-Setup.exe --clobber
