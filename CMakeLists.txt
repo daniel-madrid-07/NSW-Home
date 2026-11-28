@@ -78,6 +78,11 @@ target_link_libraries(nswhome_core PUBLIC nswhome_compat PkgConfig::CAIRO PkgCon
                                            PkgConfig::JPEG)
 
 add_executable(nsw-home src/ui.cpp src/console_menus.cpp src/port/main_sdl.cpp)
+if(APPLE)
+    enable_language(OBJCXX)
+    target_sources(nsw-home PRIVATE src/port/mac_dialog.mm)
+    target_link_libraries(nsw-home PRIVATE "-framework Cocoa" "-framework UniformTypeIdentifiers")
+endif()
 target_link_libraries(nsw-home PRIVATE nswhome_core PkgConfig::SDL2)
 # ui.cpp is shared with the Windows build and written against MSVC's /W4. Two
 # things GCC and Clang report there and MSVC does not are switched off for
