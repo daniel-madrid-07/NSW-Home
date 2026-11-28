@@ -31,6 +31,11 @@ std::string ConfigHome(); // APPDATA:      $XDG_CONFIG_HOME or ~/.config;      m
 std::string DataHome();   // LOCALAPPDATA: $XDG_DATA_HOME or ~/.local/share;   macOS ~/Library/Application Support
 std::string AppsDir();    // ProgramFiles: /opt;                               macOS /Applications
 
+#ifdef __APPLE__
+// Native macOS NSOpenPanel file/folder picker (implemented in mac_dialog.mm).
+std::string MacPickPath(bool folder, bool image, bool keys);
+#endif
+
 // AES block cipher behind the bcrypt stand-in, exposed for the self-test.
 struct Aes {
     uint32_t enc[60], dec[60];

@@ -40,6 +40,11 @@
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#ifdef __APPLE__
+#include <CoreFoundation/CoreFoundation.h>
+#include <cctype>
+#include <climits>
+#endif
 
 std::vector<Game> games;
 std::string runningId;
@@ -91,6 +96,41 @@ bool IsExecutableFile(const std::string& path) {
     return stat(path.c_str(), &st) == 0 && S_ISREG(st.st_mode) && access(path.c_str(), X_OK) == 0;
 }
 
+#ifdef __APPLE__
+// Resolves a macOS .app bundle directory to its actual executable via
+// Info.plist (CFBundleExecutable), falling back to Contents/MacOS/<name>.
+std::string ResolveMacAppExecutable(const std::string& path) {
+    if (path.size() <= 4) return path;
+    std::string ext = path.substr(path.size() - 4);
+    for (char& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    if (ext != ".app") return path;
+
+    if (CFURLRef url = CFURLCreateFromFileSystemRepresentation(
+            kCFAllocatorDefault, reinterpret_cast<const UInt8*>(path.data()),
+            static_cast<CFIndex>(path.size()), true)) {
+        std::string resolved;
+        if (CFBundleRef bundle = CFBundleCreate(kCFAllocatorDefault, url)) {
+            if (CFURLRef exeUrl = CFBundleCopyExecutableURL(bundle)) {
+                if (CFURLRef absUrl = CFURLCopyAbsoluteURL(exeUrl)) {
+                    char buf[PATH_MAX];
+                    if (CFURLGetFileSystemRepresentation(absUrl, true, reinterpret_cast<UInt8*>(buf), sizeof buf))
+                        resolved = buf;
+                    CFRelease(absUrl);
+                }
+                CFRelease(exeUrl);
+            }
+            CFRelease(bundle);
+        }
+        CFRelease(url);
+        if (!resolved.empty() && IsExecutableFile(resolved)) return resolved;
+    }
+
+    size_t slash = path.find_last_of('/');
+    std::string name = path.substr(slash == std::string::npos ? 0 : slash + 1);
+    return path + "/Contents/MacOS/" + name.substr(0, name.size() - 4);
+}
+#endif
+
 // Full path of a program on PATH, or empty.
 std::string FindProgram(const std::string& name) {
     const char* path = getenv("PATH");
@@ -113,6 +153,7 @@ std::vector<char*> ArgvOf(std::vector<std::string>& args) {
     return argv;
 }
 
+#ifndef __APPLE__
 // Runs a helper and returns what it printed; `ok` is false if it could not be
 // started or exited with an error (a cancelled dialog does that).
 std::string RunCapture(std::vector<std::string> args, bool& ok) {
@@ -152,6 +193,7 @@ std::string RunCapture(std::vector<std::string> args, bool& ok) {
     while (!out.empty() && (out.back() == '\n' || out.back() == '\r')) out.pop_back();
     return out;
 }
+#endif
 
 // Starts a helper and forgets about it (it is handed to init, so it never
 // lingers as a zombie of ours).
@@ -833,15 +875,15 @@ void HandleEvent(const SDL_Event& e) {
 
 std::wstring PickWithDialog(bool folder, bool image = false, bool keys = false) {
     if (simulate) return {}; // offscreen or scripted run: nothing may open on the desktop
-    std::vector<std::string> cmd;
 #ifdef __APPLE__
-    // The key file has no registered type to filter by, so it gets a prompt instead.
-    std::string script = folder ? "POSIX path of (choose folder)"
-                         : image ? "POSIX path of (choose file of type {\"public.png\", \"public.jpeg\"})"
-                         : keys ? "POSIX path of (choose file with prompt \"prod.keys\")"
-                                : "POSIX path of (choose file)";
-    cmd = {"/usr/bin/osascript", "-e", script};
+    std::string path = port::MacPickPath(folder, image, keys);
+    SDL_PumpEvents();
+    SDL_FlushEvents(SDL_KEYDOWN, SDL_TEXTINPUT); // keys typed into the dialog are not for the menu
+    while (path.size() > 1 && path.back() == '/') path.pop_back();
+    if (path.empty() || path[0] != '/') return {};
+    return port::Wide(path);
 #else
+    std::vector<std::string> cmd;
     std::string zenity = FindProgram("zenity"), kdialog = FindProgram("kdialog");
     if (!zenity.empty()) {
         cmd = {zenity, "--file-selection", "--title=NSW-Home"};
@@ -854,7 +896,6 @@ std::wstring PickWithDialog(bool folder, bool image = false, bool keys = false) 
         else if (keys) cmd = {kdialog, "--getopenfilename", port::HomeDir(), "*.keys|Claves de la consola"};
         else cmd = {kdialog, "--getopenfilename", port::HomeDir()};
     }
-#endif
     if (cmd.empty() || !IsExecutableFile(cmd[0])) return {};
     bool ok = false;
     std::string path = RunCapture(cmd, ok); // the menu waits, as it does behind the Windows dialog
@@ -863,6 +904,7 @@ std::wstring PickWithDialog(bool folder, bool image = false, bool keys = false) 
     while (path.size() > 1 && path.back() == '/') path.pop_back();
     if (!ok || path.empty() || path[0] != '/') return {};
     return port::Wide(path);
+#endif
 }
 
 } // namespace
@@ -893,9 +935,13 @@ std::string LaunchGame(const std::string& id) {
     // with no arguments but the ones written by hand into its config entry.
     const EmuDef* def = nullptr;
     std::string exe = port::NativePath(game->file);
-    std::vector<std::string> args = {exe};
+    std::vector<std::string> args;
     if (game->pc) {
+#ifdef __APPLE__
+        exe = ResolveMacAppExecutable(exe);
+#endif
         if (!IsExecutableFile(exe)) return "PROGRAM_MISSING";
+        args = {exe};
         for (std::string& a : port::SplitCommandLine(game->args)) args.push_back(std::move(a));
     } else {
         std::string emuId = cfg.defaultEmu;
@@ -908,12 +954,7 @@ std::string LaunchGame(const std::string& id) {
         def = FindEmu(emuId);
         exe = port::NativePath(cfg.emulators[emuId]);
 #ifdef __APPLE__
-        // An application bundle was chosen: run the program inside it.
-        if (exe.size() > 4 && exe.compare(exe.size() - 4, 4, ".app") == 0) {
-            size_t slash = exe.find_last_of('/');
-            std::string name = exe.substr(slash == std::string::npos ? 0 : slash + 1);
-            exe += "/Contents/MacOS/" + name.substr(0, name.size() - 4);
-        }
+        exe = ResolveMacAppExecutable(exe);
 #endif
         if (!def || !IsExecutableFile(exe)) return "EMULATOR_MISSING";
 

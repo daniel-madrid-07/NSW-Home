@@ -550,6 +550,11 @@ void DetectEmulators() {
     // [android] Apps are not found by walking folders: the package manager is
     // asked instead (RefreshEmulators in port/android/main_android.cpp).
     return;
+#elif defined(__APPLE__)
+    // On macOS, FindExes only matches Windows .exe names and walking USERPROFILE
+    // (~) triggers TCC permission prompts for Desktop, Documents, Downloads, etc.
+    // Native emulators are found by DetectNativeEmulators() in main_sdl.cpp.
+    return;
 #endif
     std::vector<std::pair<std::wstring, int>> roots;
     for (const auto& dir : cfg.gameDirs) {
@@ -1410,7 +1415,18 @@ std::wstring PcIconFile(const std::string& id) {
 
 std::string AddPcGame(const std::wstring& exe, const std::wstring& name) {
     const DWORD attrs = GetFileAttributesW(exe.c_str());
-    if (attrs == INVALID_FILE_ATTRIBUTES || (attrs & FILE_ATTRIBUTE_DIRECTORY)) return "PC_MISSING";
+    bool missing = attrs == INVALID_FILE_ATTRIBUTES;
+    if (!missing && (attrs & FILE_ATTRIBUTE_DIRECTORY)) {
+#ifdef __APPLE__
+        // On macOS, applications are .app bundle directories.
+        const bool isApp = EndsWithI(exe, L".app") &&
+                           (Exists(exe + L"\\Contents\\Info.plist") || Exists(exe + L"\\Contents\\MacOS"));
+        missing = !isApp;
+#else
+        missing = true;
+#endif
+    }
+    if (missing) return "PC_MISSING";
     PcGame g{PcGameId(exe), exe, name, {}};
     for (const PcGame& o : cfg.pcGames)
         if (o.id == g.id) return "PC_EXISTS";
